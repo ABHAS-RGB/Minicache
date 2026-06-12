@@ -1,28 +1,43 @@
 package com.minicache;
 
 import com.minicache.command.CommandProcessor;
+import com.minicache.server.Server;
 import com.minicache.store.KeyValueStore;
 
 import java.util.Scanner;
 
-/**
- * Main entry point for MiniCache - Phase 1.
- *
- * This is a CLI (command-line) REPL: it reads a command, evaluates it
- * against the store, prints the result, and loops.
- *
- * In Phase 2, we'll add a TCP server that does almost the exact same
- * thing (read line -> process -> respond) but over a socket instead
- * of System.in/System.out. The CommandProcessor we wrote will be
- * reused as-is.
- */
 public class Main {
 
+    private static final int DEFAULT_PORT = 6380;
+
     public static void main(String[] args) {
+        String mode = (args.length > 0) ? args[0].toLowerCase() : "cli";
+
+        switch (mode) {
+            case "server":
+                int port = DEFAULT_PORT;
+                if (args.length > 1) {
+                    try {
+                        port = Integer.parseInt(args[1]);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid port '" + args[1] + "', using default " + DEFAULT_PORT);
+                    }
+                }
+                new Server(port).start();
+                break;
+
+            case "cli":
+            default:
+                runCli();
+                break;
+        }
+    }
+
+    private static void runCli() {
         KeyValueStore store = new KeyValueStore();
         CommandProcessor processor = new CommandProcessor(store);
 
-        System.out.println("MiniCache v0.1 (Phase 1 - in-memory store, CLI mode)");
+        System.out.println("MiniCache v0.2 (CLI mode)");
         System.out.println("Supported commands: SET key value | GET key | DEL key | EXISTS key | PING | EXIT");
         System.out.println();
 

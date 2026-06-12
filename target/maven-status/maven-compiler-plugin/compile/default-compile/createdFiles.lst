@@ -1,3 +1,5 @@
 com\minicache\command\CommandProcessor.class
-com\minicache\store\KeyValueStore.class
 com\minicache\Main.class
+com\minicache\server\Server.class
+com\minicache\store\KeyValueStore.class
+com\minicache\server\ClientHandler.class
