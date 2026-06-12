@@ -1,0 +1,3 @@
+com\minicache\command\CommandProcessor.class
+com\minicache\store\KeyValueStore.class
+com\minicache\Main.class
