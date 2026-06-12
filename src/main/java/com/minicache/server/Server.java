@@ -7,27 +7,12 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 
-/**
- * Server is the "front door" of MiniCache.
- *
- * It does ONE job in a loop:
- *   1. Wait for a client to connect (accept())
- *   2. Hand that client off to a new ClientHandler running on its own Thread
- *   3. Immediately go back to waiting for the NEXT client
- *
- * This is the "thread-per-connection" model:
- * - Pros: simple to understand and implement, each client's logic is
- *   isolated (one client's slow command doesn't block others).
- * - Cons: doesn't scale to huge numbers of connections (e.g. 10,000+)
- *   because each thread consumes OS memory (~1MB stack by default) and
- *   the OS has to context-switch between them. Production systems
- *   (real Redis, Netty-based servers) use event loops / async I/O
- *   to avoid this. Good to mention this tradeoff in interviews.
- */
 public class Server {
 
     private final int port;
     private final KeyValueStore store;
+
+    private static final long CLEANUP_INTERVAL_MS = 1000;
 
     public Server(int port) {
         this.port = port;
@@ -35,6 +20,8 @@ public class Server {
     }
 
     public void start() {
+        startExpirationThread();
+
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             System.out.println("MiniCache server listening on port " + port);
             System.out.println("Connect using: telnet localhost " + port);
@@ -51,5 +38,25 @@ public class Server {
         } catch (IOException e) {
             System.err.println("[Server] Failed to start on port " + port + ": " + e.getMessage());
         }
+    }
+
+    private void startExpirationThread() {
+        Thread expirationThread = new Thread(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(CLEANUP_INTERVAL_MS);
+                    int removed = store.removeExpiredKeys();
+                    if (removed > 0) {
+                        System.out.println("[Expiration] Removed " + removed + " expired key(s)");
+                    }
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+        });
+        expirationThread.setDaemon(true);
+        expirationThread.setName("expiration-cleanup");
+        expirationThread.start();
+        System.out.println("[Server] Background expiration thread started (interval: " + CLEANUP_INTERVAL_MS + "ms)");
     }
 }

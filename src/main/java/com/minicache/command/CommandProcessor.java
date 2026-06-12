@@ -2,18 +2,6 @@ package com.minicache.command;
 
 import com.minicache.store.KeyValueStore;
 
-/**
- * CommandProcessor takes a raw command line (e.g. "SET name John")
- * and executes it against the KeyValueStore, returning a response string.
- *
- * Why separate this from KeyValueStore and from Main?
- * - KeyValueStore only knows about data (get/set/del) — it has no idea
- *   what a "command line" looks like.
- * - Main (or later, the network server) just needs to pass in a line
- *   of text and get a line of text back. This means Phase 2's TCP
- *   server can reuse this class UNCHANGED, just swapping CLI input
- *   for socket input.
- */
 public class CommandProcessor {
 
     private final KeyValueStore store;
@@ -27,9 +15,6 @@ public class CommandProcessor {
             return "(error) empty command";
         }
 
-        // Split on whitespace. limit=3 means SET only splits into 3 parts max,
-        // so values containing spaces (e.g. "SET msg hello world") are preserved
-        // as one value: ["SET", "msg", "hello world"]
         String[] parts = line.trim().split("\\s+", 3);
         String command = parts[0].toUpperCase();
 
@@ -42,6 +27,10 @@ public class CommandProcessor {
                 return handleDel(parts);
             case "EXISTS":
                 return handleExists(parts);
+            case "EXPIRE":
+                return handleExpire(parts);
+            case "TTL":
+                return handleTtl(parts);
             case "PING":
                 return "PONG";
             default:
@@ -79,5 +68,30 @@ public class CommandProcessor {
         }
         boolean exists = store.exists(parts[1]);
         return exists ? "(integer) 1" : "(integer) 0";
+    }
+
+    private String handleExpire(String[] parts) {
+        if (parts.length < 3) {
+            return "(error) wrong number of arguments for 'EXPIRE'. Usage: EXPIRE key seconds";
+        }
+
+        long seconds;
+        try {
+            String secondsToken = parts[2].trim().split("\\s+")[0];
+            seconds = Long.parseLong(secondsToken);
+        } catch (NumberFormatException e) {
+            return "(error) value is not an integer or out of range";
+        }
+
+        boolean set = store.expire(parts[1], seconds);
+        return set ? "(integer) 1" : "(integer) 0";
+    }
+
+    private String handleTtl(String[] parts) {
+        if (parts.length < 2) {
+            return "(error) wrong number of arguments for 'TTL'. Usage: TTL key";
+        }
+        long ttl = store.ttl(parts[1]);
+        return "(integer) " + ttl;
     }
 }

@@ -3,38 +3,104 @@ package com.minicache.store;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * KeyValueStore is the core data structure of MiniCache.
- *
- * Why ConcurrentHashMap?
- * - Phase 2 will add a TCP server handling MULTIPLE clients at once,
- *   each on its own thread. A plain HashMap is NOT thread-safe and
- *   would corrupt data or throw exceptions under concurrent access.
- * - ConcurrentHashMap allows safe concurrent reads/writes without us
- *   manually managing locks for basic operations.
- */
 public class KeyValueStore {
 
     private final Map<String, String> data;
+    private final Map<String, Long> expiryTimes;
 
     public KeyValueStore() {
         this.data = new ConcurrentHashMap<>();
+        this.expiryTimes = new ConcurrentHashMap<>();
     }
 
     public void set(String key, String value) {
         data.put(key, value);
+        expiryTimes.remove(key);
     }
 
     public String get(String key) {
+        if (isExpired(key)) {
+            removeKey(key);
+            return null;
+        }
         return data.get(key);
     }
 
     public boolean del(String key) {
-        return data.remove(key) != null;
+        if (isExpired(key)) {
+            removeKey(key);
+            return false;
+        }
+        boolean removed = data.remove(key) != null;
+        expiryTimes.remove(key);
+        return removed;
     }
 
     public boolean exists(String key) {
+        if (isExpired(key)) {
+            removeKey(key);
+            return false;
+        }
         return data.containsKey(key);
+    }
+
+    public boolean expire(String key, long seconds) {
+        if (isExpired(key) || !data.containsKey(key)) {
+            removeKey(key);
+            return false;
+        }
+
+        if (seconds <= 0) {
+            removeKey(key);
+            return true;
+        }
+
+        long expiryTimestamp = System.currentTimeMillis() + (seconds * 1000L);
+        expiryTimes.put(key, expiryTimestamp);
+        return true;
+    }
+
+    public long ttl(String key) {
+        if (isExpired(key)) {
+            removeKey(key);
+            return -2;
+        }
+        if (!data.containsKey(key)) {
+            return -2;
+        }
+        Long expiryTimestamp = expiryTimes.get(key);
+        if (expiryTimestamp == null) {
+            return -1;
+        }
+        long remainingMillis = expiryTimestamp - System.currentTimeMillis();
+        return Math.max(0, (remainingMillis + 999) / 1000);
+    }
+
+    private boolean isExpired(String key) {
+        Long expiryTimestamp = expiryTimes.get(key);
+        if (expiryTimestamp == null) {
+            return false;
+        }
+        return System.currentTimeMillis() >= expiryTimestamp;
+    }
+
+    private void removeKey(String key) {
+        data.remove(key);
+        expiryTimes.remove(key);
+    }
+
+    public int removeExpiredKeys() {
+        int removed = 0;
+        long now = System.currentTimeMillis();
+
+        for (String key : expiryTimes.keySet().toArray(new String[0])) {
+            Long expiryTimestamp = expiryTimes.get(key);
+            if (expiryTimestamp != null && now >= expiryTimestamp) {
+                removeKey(key);
+                removed++;
+            }
+        }
+        return removed;
     }
 
     public int size() {
