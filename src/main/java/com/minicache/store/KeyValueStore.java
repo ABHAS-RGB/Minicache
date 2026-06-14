@@ -1,5 +1,6 @@
 package com.minicache.store;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -49,12 +50,10 @@ public class KeyValueStore {
             removeKey(key);
             return false;
         }
-
         if (seconds <= 0) {
             removeKey(key);
             return true;
         }
-
         long expiryTimestamp = System.currentTimeMillis() + (seconds * 1000L);
         expiryTimes.put(key, expiryTimestamp);
         return true;
@@ -92,7 +91,6 @@ public class KeyValueStore {
     public int removeExpiredKeys() {
         int removed = 0;
         long now = System.currentTimeMillis();
-
         for (String key : expiryTimes.keySet().toArray(new String[0])) {
             Long expiryTimestamp = expiryTimes.get(key);
             if (expiryTimestamp != null && now >= expiryTimestamp) {
@@ -105,5 +103,21 @@ public class KeyValueStore {
 
     public int size() {
         return data.size();
+    }
+
+    /**
+     * Returns an unmodifiable snapshot of the data map for persistence.
+     * Unmodifiable = PersistenceManager can read it but not accidentally
+     * modify the live store while iterating.
+     */
+    public Map<String, String> getDataSnapshot() {
+        return Collections.unmodifiableMap(data);
+    }
+
+    /**
+     * Returns an unmodifiable snapshot of the expiry map for persistence.
+     */
+    public Map<String, Long> getExpirySnapshot() {
+        return Collections.unmodifiableMap(expiryTimes);
     }
 }

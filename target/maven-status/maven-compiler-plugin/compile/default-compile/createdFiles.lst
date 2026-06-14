@@ -1,5 +1,8 @@
-com\minicache\command\CommandProcessor.class
 com\minicache\Main.class
+com\minicache\persistence\PersistenceManager$SaveData.class
+com\minicache\persistence\PersistenceManager.class
 com\minicache\server\Server.class
 com\minicache\store\KeyValueStore.class
 com\minicache\server\ClientHandler.class
+com\minicache\command\CommandProcessor.class
+com\minicache\persistence\PersistenceManager$1.class
