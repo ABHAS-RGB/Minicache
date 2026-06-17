@@ -13,66 +13,49 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Map;
 
-/**
- * PersistenceManager handles saving and loading the store to/from disk.
- *
- * Save format: JSON file with two maps:
- *   {
- *     "data": { "key1": "value1", "key2": "value2" },
- *     "expiryTimes": { "key2": 1718123456789 }
- *   }
- *
- * Atomic writes: we write to a temp file first, then rename it to the
- * real file. Renaming is atomic on most OS/filesystems - if the process
- * crashes mid-write, the old file is still intact (not half-written).
- * This is a critical pattern in any system that writes important data.
- *
- * Why Gson?
- * - Java has no built-in JSON library. Gson is Google's library,
- *   widely used, and one line to add via Maven. Shows you know how
- *   to manage dependencies in real projects.
- */
 public class PersistenceManager {
 
-    private static final String SAVE_FILE = "dump.json";
-    private static final String TEMP_FILE = "dump.json.tmp";
-
+    private final String saveFile;
+    private final String tempFile;
     private final KeyValueStore store;
     private final Gson gson;
 
     public PersistenceManager(KeyValueStore store) {
         this.store = store;
         this.gson = new GsonBuilder().setPrettyPrinting().create();
+
+        // Respect SAVE_DIR env variable (set in Dockerfile to /data).
+        // Falls back to current directory if not set (local development).
+        String saveDir = System.getenv("SAVE_DIR");
+        if (saveDir != null && !saveDir.isEmpty()) {
+            this.saveFile = saveDir + "/dump.json";
+            this.tempFile = saveDir + "/dump.json.tmp";
+        } else {
+            this.saveFile = "dump.json";
+            this.tempFile = "dump.json.tmp";
+        }
+
+        System.out.println("[Persistence] Save location: " + this.saveFile);
     }
 
-    /**
-     * Saves current store state to disk atomically.
-     * Returns true if save succeeded, false if it failed.
-     */
     public boolean save() {
         try {
-            // Get a snapshot of both maps from the store
             Map<String, String> data = store.getDataSnapshot();
             Map<String, Long> expiryTimes = store.getExpirySnapshot();
 
-            // Build a simple wrapper object to serialize both maps together
             SaveData saveData = new SaveData(data, expiryTimes);
             String json = gson.toJson(saveData);
 
-            // Write to temp file first (atomic write pattern)
-            Path tempPath = Paths.get(TEMP_FILE);
-            Path savePath = Paths.get(SAVE_FILE);
+            Path tempPath = Paths.get(tempFile);
+            Path savePath = Paths.get(saveFile);
 
             try (Writer writer = new FileWriter(tempPath.toFile())) {
                 writer.write(json);
             }
 
-            // Atomically replace the real file with the temp file.
-            // If this process was killed during the write above,
-            // dump.json is still intact from the previous save.
             Files.move(tempPath, savePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
 
-            System.out.println("[Persistence] Saved " + data.size() + " key(s) to " + SAVE_FILE);
+            System.out.println("[Persistence] Saved " + data.size() + " key(s) to " + saveFile);
             return true;
 
         } catch (IOException e) {
@@ -81,13 +64,8 @@ public class PersistenceManager {
         }
     }
 
-    /**
-     * Loads store state from disk on startup.
-     * Returns the number of keys loaded, or -1 if load failed.
-     * Returns 0 silently if no save file exists (fresh start).
-     */
     public int load() {
-        Path savePath = Paths.get(SAVE_FILE);
+        Path savePath = Paths.get(saveFile);
 
         if (!Files.exists(savePath)) {
             System.out.println("[Persistence] No save file found, starting fresh.");
@@ -105,8 +83,6 @@ public class PersistenceManager {
                 return 0;
             }
 
-            // Filter out already-expired keys before loading them back.
-            // No point restoring a key whose TTL expired while server was down.
             long now = System.currentTimeMillis();
             int loaded = 0;
             int skipped = 0;
@@ -117,13 +93,11 @@ public class PersistenceManager {
                     ? saveData.expiryTimes.get(key)
                     : null;
 
-                // Skip keys that expired while the server was offline
                 if (expiryTimestamp != null && now >= expiryTimestamp) {
                     skipped++;
                     continue;
                 }
 
-                // Restore the key and its TTL (if any)
                 store.set(key, entry.getValue());
                 if (expiryTimestamp != null) {
                     long remainingSeconds = (expiryTimestamp - now) / 1000;
@@ -132,7 +106,7 @@ public class PersistenceManager {
                 loaded++;
             }
 
-            System.out.println("[Persistence] Loaded " + loaded + " key(s) from " + SAVE_FILE +
+            System.out.println("[Persistence] Loaded " + loaded + " key(s) from " + saveFile +
                 (skipped > 0 ? " (skipped " + skipped + " expired key(s))" : ""));
             return loaded;
 
@@ -142,10 +116,6 @@ public class PersistenceManager {
         }
     }
 
-    /**
-     * Simple wrapper class for Gson serialization.
-     * Gson serializes all fields automatically - no annotations needed.
-     */
     private static class SaveData {
         Map<String, String> data;
         Map<String, Long> expiryTimes;
