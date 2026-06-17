@@ -1,10 +1,7 @@
 {
   "data": {
     "name": "Abhas",
-    "project": "MiniCache",
-    "version": "1.0"
+    "project": "MiniCache"
   },
-  "expiryTimes": {
-    "version": 1781459889060
-  }
+  "expiryTimes": {}
 }
