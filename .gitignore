@@ -1,0 +1,5 @@
+target/
+*.class
+dump.json
+dump.json.tmp
+.vscode/
